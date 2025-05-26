@@ -1,14 +1,18 @@
-# Gunakan image PHP resmi dengan Apache
-FROM php:8.2-apache
+# Dockerfile
+FROM php:8.1-apache
 
-# Instal ekstensi PHP yang dibutuhkan (mysqli atau pdo_mysql)
-RUN docker-php-ext-install pdo_mysql
+# Install MySQL extension
+RUN docker-php-ext-install mysqli pdo pdo_mysql
 
-# Salin file aplikasi ke direktori web server di dalam container
-COPY . /var/www/html/
+# Enable Apache mod_rewrite
+RUN a2enmod rewrite
 
-# (Opsional) Atur izin jika diperlukan
-# RUN chown -R www-data:www-data /var/www/html
+# Copy application files
+COPY src/ /var/www/html/
 
-# Expose port 80 (port default Apache)
+# Set permissions
+RUN chown -R www-data:www-data /var/www/html
+RUN chmod -R 755 /var/www/html
+
+# Expose port
 EXPOSE 80

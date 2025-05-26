@@ -1,42 +1,53 @@
 version: '3.8'
 
 services:
-  # Service untuk Aplikasi PHP
   web:
-    build:
-      context: ../crud-app # Path ke direktori yang berisi Dockerfile dan kode aplikasi
-      dockerfile: Dockerfile
-    container_name: php_apache_app
+    build: .
+    container_name: php-apache
     ports:
-      - "8080:80" # Map port 8080 di host ke port 80 di container web
+      - "8080:80"
     volumes:
-      - ./app_crud:/var/www/html/ # Sinkronisasi kode dari host ke container (untuk development)
+      - ./src:/var/www/html
     depends_on:
-      - db # Aplikasi web akan menunggu service db siap
-    restart: unless-stopped
+      - db
     networks:
-      - app-network
+      - crud-network
 
-  # Service untuk Database MySQL
   db:
-    image: mysql:8.0 # Gunakan image MySQL resmi
-    container_name: mysql_db
-    ports:
-      - "3306:3306" # Map port 3306 di host ke port 3306 di container db (opsional, untuk akses dari host)
+    image: mysql:8.0
+    container_name: mysql-db
+    restart: always
     environment:
-      MYSQL_DATABASE: db_produk
-      MYSQL_USER: user_produk
-      MYSQL_PASSWORD: password_produk # Ganti dengan password yang kuat
-      MYSQL_ROOT_PASSWORD: root_password_kuat # Ganti dengan password root yang kuat
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: crud_db
+      MYSQL_USER: crud_user
+      MYSQL_PASSWORD: crud_password
+    ports:
+      - "3306:3306"
     volumes:
-      - db_data:/var/lib/mysql # Volume untuk persistensi data MySQL
-    restart: unless-stopped
+      - mysql_data:/var/lib/mysql
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
-      - app-network
+      - crud-network
 
-networks:
-  app-network:
-    driver: bridge
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: phpmyadmin
+    restart: always
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: db
+      PMA_USER: crud_user
+      PMA_PASSWORD: crud_password
+    depends_on:
+      - db
+    networks:
+      - crud-network
 
 volumes:
-  db_data: # Definisi volume untuk data MySQL
+  mysql_data:
+
+networks:
+  crud-network:
+    driver: bridge
