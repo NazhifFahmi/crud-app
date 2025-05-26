@@ -4,7 +4,7 @@ services:
   # Service untuk Aplikasi PHP
   web:
     build:
-      context: ../app-crud # Path ke direktori yang berisi Dockerfile dan kode aplikasi
+      context: ../crud-app # Path ke direktori yang berisi Dockerfile dan kode aplikasi
       dockerfile: Dockerfile
     container_name: php_apache_app
     ports:
