@@ -1,37 +1,11 @@
 <?php
-require_once 'config/database.php';
-
-// Handle form submissions
-if ($_POST) {
-    if (isset($_POST['create'])) {
-        $stmt = $pdo->prepare("INSERT INTO users (name, email, phone) VALUES (?, ?, ?)");
-        $stmt->execute([$_POST['name'], $_POST['email'], $_POST['phone']]);
-        $message = "User created successfully!";
-    }
-    
-    if (isset($_POST['update'])) {
-        $stmt = $pdo->prepare("UPDATE users SET name = ?, email = ?, phone = ? WHERE id = ?");
-        $stmt->execute([$_POST['name'], $_POST['email'], $_POST['phone'], $_POST['id']]);
-        $message = "User updated successfully!";
-    }
-    
-    if (isset($_POST['delete'])) {
-        $stmt = $pdo->prepare("DELETE FROM users WHERE id = ?");
-        $stmt->execute([$_POST['id']]);
-        $message = "User deleted successfully!";
-    }
-}
-
-// Get edit user data
-$editUser = null;
-if (isset($_GET['edit'])) {
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-    $stmt->execute([$_GET['edit']]);
-    $editUser = $stmt->fetch();
-}
+// Redirect to dashboard
+header('Location: dashboard.php');
+exit;
+?>
 
 // Get all users
-$stmt = $pdo->query("SELECT * FROM users ORDER BY id DESC");
+$stmt = $pdo->query(query: "SELECT * FROM users ORDER BY id DESC");
 $users = $stmt->fetchAll();
 ?>
 
