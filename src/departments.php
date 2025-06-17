@@ -5,22 +5,59 @@ $pageTitle = 'Departments - Employee Management System';
 // Handle form submissions
 if ($_POST) {
     try {
-        if (isset($_POST['create'])) {
-            $stmt = $pdo->prepare("INSERT INTO departments (name, description, manager_id) VALUES (?, ?, ?)");
-            $stmt->execute([$_POST['name'], $_POST['description'], $_POST['manager_id'] ?: null]);
-            $success = "Department created successfully!";
+        // Validate required fields
+        if (isset($_POST['create']) || isset($_POST['update'])) {
+            if (empty($_POST['name'])) {
+                $error = "Department name is required";
+            } else {
+                // Check for duplicate department name
+                $sql = "SELECT id FROM departments WHERE name = ?";
+                $params = [$_POST['name']];
+                
+                if (isset($_POST['update']) && !empty($_POST['id'])) {
+                    $sql .= " AND id != ?";
+                    $params[] = $_POST['id'];
+                }
+                
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                if ($stmt->fetch()) {
+                    $error = "Department name already exists";
+                }
+            }
         }
         
-        if (isset($_POST['update'])) {
-            $stmt = $pdo->prepare("UPDATE departments SET name = ?, description = ?, manager_id = ? WHERE id = ?");
-            $stmt->execute([$_POST['name'], $_POST['description'], $_POST['manager_id'] ?: null, $_POST['id']]);
-            $success = "Department updated successfully!";
-        }
-        
-        if (isset($_POST['delete'])) {
-            $stmt = $pdo->prepare("DELETE FROM departments WHERE id = ?");
-            $stmt->execute([$_POST['id']]);
-            $success = "Department deleted successfully!";
+        if (!isset($error)) {
+            if (isset($_POST['create'])) {
+                $stmt = $pdo->prepare("INSERT INTO departments (name, description, manager_id) VALUES (?, ?, ?)");
+                $stmt->execute([$_POST['name'], $_POST['description'], $_POST['manager_id'] ?: null]);
+                $success = "Department created successfully!";
+            }
+            
+            if (isset($_POST['update'])) {
+                $stmt = $pdo->prepare("UPDATE departments SET name = ?, description = ?, manager_id = ? WHERE id = ?");
+                $stmt->execute([$_POST['name'], $_POST['description'], $_POST['manager_id'] ?: null, $_POST['id']]);
+                $success = "Department updated successfully!";
+            }
+            
+            if (isset($_POST['delete'])) {
+                // Check if department has employees
+                $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM employees WHERE department_id = ? AND status = 'active'");
+                $stmt->execute([$_POST['id']]);
+                $employeeCount = $stmt->fetch()['count'];
+                
+                if ($employeeCount > 0) {
+                    $error = "Cannot delete department. There are $employeeCount active employees assigned to this department.";
+                } else {
+                    // Remove department assignment from inactive employees first
+                    $stmt = $pdo->prepare("UPDATE employees SET department_id = NULL WHERE department_id = ?");
+                    $stmt->execute([$_POST['id']]);
+                    
+                    $stmt = $pdo->prepare("DELETE FROM departments WHERE id = ?");
+                    $stmt->execute([$_POST['id']]);
+                    $success = "Department deleted successfully!";
+                }
+            }
         }
     } catch(PDOException $e) {
         $error = "Error: " . $e->getMessage();

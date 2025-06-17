@@ -30,9 +30,36 @@ if ($_POST) {
         }
         
         if (isset($_POST['delete'])) {
+            // Delete project assignments first
+            $stmt = $pdo->prepare("DELETE FROM employee_projects WHERE project_id = ?");
+            $stmt->execute([$_POST['id']]);
+            
             $stmt = $pdo->prepare("DELETE FROM projects WHERE id = ?");
             $stmt->execute([$_POST['id']]);
             $success = "Project deleted successfully!";
+        }
+        
+        if (isset($_POST['assign_employee'])) {
+            // Check if assignment already exists
+            $stmt = $pdo->prepare("SELECT id FROM employee_projects WHERE employee_id = ? AND project_id = ?");
+            $stmt->execute([$_POST['employee_id'], $_POST['project_id']]);
+            
+            if (!$stmt->fetch()) {
+                $stmt = $pdo->prepare("
+                    INSERT INTO employee_projects (employee_id, project_id, role, assigned_date) 
+                    VALUES (?, ?, ?, CURDATE())
+                ");
+                $stmt->execute([$_POST['employee_id'], $_POST['project_id'], $_POST['role']]);
+                $success = "Employee assigned to project successfully!";
+            } else {
+                $error = "Employee is already assigned to this project!";
+            }
+        }
+        
+        if (isset($_POST['unassign_employee'])) {
+            $stmt = $pdo->prepare("DELETE FROM employee_projects WHERE employee_id = ? AND project_id = ?");
+            $stmt->execute([$_POST['employee_id'], $_POST['project_id']]);
+            $success = "Employee unassigned from project successfully!";
         }
     } catch(PDOException $e) {
         $error = "Error: " . $e->getMessage();
@@ -48,6 +75,15 @@ $stmt = $pdo->query("
     ORDER BY p.created_at DESC
 ");
 $projects = $stmt->fetchAll();
+
+// Get all active employees for assignment dropdown
+$stmt = $pdo->query("
+    SELECT id, CONCAT(first_name, ' ', last_name) as name, employee_id 
+    FROM employees 
+    WHERE status = 'active' 
+    ORDER BY first_name, last_name
+");
+$employees = $stmt->fetchAll();
 
 include 'includes/header.php';
 ?>
@@ -428,6 +464,24 @@ include 'includes/header.php';
                     </button>
                 </div>
             </form>
+        </div>    </div>
+</div>
+
+<!-- Team Management Modal -->
+<div class="modal fade" id="teamModal" tabindex="-1" aria-labelledby="teamModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="teamModalLabel">
+                    <i class="fas fa-users me-2"></i>Manage Project Team
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="team-content">
+                    <!-- Content will be loaded via JavaScript -->
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -500,8 +554,18 @@ function viewProjectDetails(projectId) {
 }
 
 function manageTeam(projectId) {
-    // Placeholder for team management
-    alert(`Manage team for project ID: ${projectId}`);
+    // Load team management interface
+    fetch(`api/project-team.php?project_id=${projectId}`)
+        .then(response => response.text())
+        .then(html => {
+            document.getElementById('team-content').innerHTML = html;
+            new bootstrap.Modal(document.getElementById('teamModal')).show();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('team-content').innerHTML = '<p class="text-danger">Error loading team data.</p>';
+            new bootstrap.Modal(document.getElementById('teamModal')).show();
+        });
 }
 
 // Reset modal when closed

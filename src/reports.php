@@ -2,6 +2,160 @@
 require_once 'config/database.php';
 $pageTitle = 'Reports - Employee Management System';
 
+// Handle export requests
+if (isset($_GET['export'])) {
+    $exportType = $_GET['export'];
+    $date = $_GET['date'] ?? date('Y-m-d');
+    
+    switch ($exportType) {
+        case 'attendance':
+            exportAttendanceReport($pdo, $date);
+            break;
+        case 'employees':
+            exportEmployeeReport($pdo);
+            break;
+        case 'departments':
+            exportDepartmentReport($pdo);
+            break;
+        case 'projects':
+            exportProjectReport($pdo);
+            break;
+    }
+    exit;
+}
+
+function exportAttendanceReport($pdo, $date) {
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="attendance_report_' . $date . '.csv"');
+    
+    $output = fopen('php://output', 'w');
+    fputcsv($output, ['Employee ID', 'Name', 'Department', 'Check In', 'Check Out', 'Working Hours', 'Status', 'Notes']);
+    
+    $stmt = $pdo->prepare("
+        SELECT e.employee_id, CONCAT(e.first_name, ' ', e.last_name) as name, 
+               d.name as department, a.check_in, a.check_out, a.status, a.notes
+        FROM employees e
+        LEFT JOIN departments d ON e.department_id = d.id
+        LEFT JOIN attendance a ON e.id = a.employee_id AND a.date = ?
+        WHERE e.status = 'active'
+        ORDER BY e.first_name, e.last_name
+    ");
+    $stmt->execute([$date]);
+    
+    while ($row = $stmt->fetch()) {
+        $workingHours = '';
+        if ($row['check_in'] && $row['check_out']) {
+            $hours = (strtotime($row['check_out']) - strtotime($row['check_in'])) / 3600;
+            $workingHours = number_format($hours, 1) . ' hours';
+        }
+        
+        fputcsv($output, [
+            $row['employee_id'],
+            $row['name'],
+            $row['department'] ?: 'No Department',
+            $row['check_in'] ?: 'Not checked in',
+            $row['check_out'] ?: 'Not checked out',
+            $workingHours,
+            $row['status'] ?: 'Not marked',
+            $row['notes'] ?: ''
+        ]);
+    }
+    fclose($output);
+}
+
+function exportEmployeeReport($pdo) {
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="employee_report_' . date('Y-m-d') . '.csv"');
+    
+    $output = fopen('php://output', 'w');
+    fputcsv($output, ['Employee ID', 'Name', 'Email', 'Phone', 'Position', 'Department', 'Salary', 'Hire Date', 'Status']);
+    
+    $stmt = $pdo->query("
+        SELECT e.employee_id, CONCAT(e.first_name, ' ', e.last_name) as name, 
+               e.email, e.phone, e.position, d.name as department, 
+               e.salary, e.hire_date, e.status
+        FROM employees e
+        LEFT JOIN departments d ON e.department_id = d.id
+        ORDER BY e.first_name, e.last_name
+    ");
+    
+    while ($row = $stmt->fetch()) {
+        fputcsv($output, [
+            $row['employee_id'],
+            $row['name'],
+            $row['email'],
+            $row['phone'] ?: '',
+            $row['position'] ?: '',
+            $row['department'] ?: 'No Department',
+            $row['salary'] ? 'Rp ' . number_format($row['salary'], 0, ',', '.') : '',
+            $row['hire_date'] ?: '',
+            $row['status']
+        ]);
+    }
+    fclose($output);
+}
+
+function exportDepartmentReport($pdo) {
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="department_report_' . date('Y-m-d') . '.csv"');
+    
+    $output = fopen('php://output', 'w');
+    fputcsv($output, ['Department', 'Manager', 'Employee Count', 'Average Salary', 'Total Salary']);
+    
+    $stmt = $pdo->query("
+        SELECT d.name, CONCAT(m.first_name, ' ', m.last_name) as manager_name,
+               COUNT(e.id) as employee_count, 
+               AVG(e.salary) as avg_salary,
+               SUM(e.salary) as total_salary
+        FROM departments d
+        LEFT JOIN employees m ON d.manager_id = m.id
+        LEFT JOIN employees e ON d.id = e.department_id AND e.status = 'active'
+        GROUP BY d.id, d.name
+        ORDER BY d.name
+    ");
+    
+    while ($row = $stmt->fetch()) {
+        fputcsv($output, [
+            $row['name'],
+            $row['manager_name'] ?: 'No Manager',
+            $row['employee_count'],
+            $row['avg_salary'] ? 'Rp ' . number_format($row['avg_salary'], 0, ',', '.') : '',
+            $row['total_salary'] ? 'Rp ' . number_format($row['total_salary'], 0, ',', '.') : ''
+        ]);
+    }
+    fclose($output);
+}
+
+function exportProjectReport($pdo) {
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="project_report_' . date('Y-m-d') . '.csv"');
+    
+    $output = fopen('php://output', 'w');
+    fputcsv($output, ['Project Name', 'Status', 'Start Date', 'End Date', 'Budget', 'Team Size', 'Description']);
+    
+    $stmt = $pdo->query("
+        SELECT p.name, p.status, p.start_date, p.end_date, p.budget, p.description,
+               COUNT(ep.employee_id) as team_size
+        FROM projects p
+        LEFT JOIN employee_projects ep ON p.id = ep.project_id
+        GROUP BY p.id
+        ORDER BY p.created_at DESC
+    ");
+    
+    while ($row = $stmt->fetch()) {
+        fputcsv($output, [
+            $row['name'],
+            ucfirst(str_replace('_', ' ', $row['status'])),
+            $row['start_date'] ?: '',
+            $row['end_date'] ?: '',
+            $row['budget'] ? 'Rp ' . number_format($row['budget'], 0, ',', '.') : '',
+            $row['team_size'],
+            $row['description'] ?: ''
+        ]);
+    }
+    fclose($output);
+}
+
 // Get various statistics for reports
 try {
     // Employee statistics

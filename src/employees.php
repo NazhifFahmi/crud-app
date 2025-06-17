@@ -5,39 +5,103 @@ $pageTitle = 'Employees - Employee Management System';
 // Handle form submissions
 if ($_POST) {
     try {
-        if (isset($_POST['create'])) {
-            $stmt = $pdo->prepare("
-                INSERT INTO employees (employee_id, first_name, last_name, email, phone, position, department_id, salary, hire_date, address, status) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ");
-            $stmt->execute([
-                $_POST['employee_id'], $_POST['first_name'], $_POST['last_name'], 
-                $_POST['email'], $_POST['phone'], $_POST['position'], 
-                $_POST['department_id'], $_POST['salary'], $_POST['hire_date'],
-                $_POST['address'], $_POST['status']
-            ]);
-            $success = "Employee created successfully!";
+        // Validate required fields
+        $required_fields = ['employee_id', 'first_name', 'last_name', 'email'];
+        $errors = [];
+        
+        foreach ($required_fields as $field) {
+            if (empty($_POST[$field])) {
+                $errors[] = ucfirst(str_replace('_', ' ', $field)) . " is required";
+            }
         }
         
-        if (isset($_POST['update'])) {
-            $stmt = $pdo->prepare("
-                UPDATE employees SET employee_id = ?, first_name = ?, last_name = ?, email = ?, phone = ?, 
-                position = ?, department_id = ?, salary = ?, hire_date = ?, address = ?, status = ?
-                WHERE id = ?
-            ");
-            $stmt->execute([
-                $_POST['employee_id'], $_POST['first_name'], $_POST['last_name'], 
-                $_POST['email'], $_POST['phone'], $_POST['position'], 
-                $_POST['department_id'], $_POST['salary'], $_POST['hire_date'],
-                $_POST['address'], $_POST['status'], $_POST['id']
-            ]);
-            $success = "Employee updated successfully!";
+        // Validate email format
+        if (!empty($_POST['email']) && !filter_var($_POST['email'], FILTER_VALIDATE_EMAIL)) {
+            $errors[] = "Invalid email format";
+        }
+        
+        // Check for duplicate employee_id and email (except when updating same record)
+        if (!empty($_POST['employee_id'])) {
+            $sql = "SELECT id FROM employees WHERE employee_id = ?";
+            $params = [$_POST['employee_id']];
+            
+            if (isset($_POST['update']) && !empty($_POST['id'])) {
+                $sql .= " AND id != ?";
+                $params[] = $_POST['id'];
+            }
+            
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            if ($stmt->fetch()) {
+                $errors[] = "Employee ID already exists";
+            }
+        }
+        
+        if (!empty($_POST['email'])) {
+            $sql = "SELECT id FROM employees WHERE email = ?";
+            $params = [$_POST['email']];
+            
+            if (isset($_POST['update']) && !empty($_POST['id'])) {
+                $sql .= " AND id != ?";
+                $params[] = $_POST['id'];
+            }
+            
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            if ($stmt->fetch()) {
+                $errors[] = "Email already exists";
+            }
+        }
+        
+        if (!empty($errors)) {
+            $error = implode(", ", $errors);
+        } else {
+            if (isset($_POST['create'])) {
+                $stmt = $pdo->prepare("
+                    INSERT INTO employees (employee_id, first_name, last_name, email, phone, position, department_id, salary, hire_date, address, status) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ");
+                $stmt->execute([
+                    $_POST['employee_id'], $_POST['first_name'], $_POST['last_name'], 
+                    $_POST['email'], $_POST['phone'], $_POST['position'], 
+                    $_POST['department_id'] ?: null, $_POST['salary'] ?: null, $_POST['hire_date'] ?: null,
+                    $_POST['address'], $_POST['status']
+                ]);
+                $success = "Employee created successfully!";
+            }
+            
+            if (isset($_POST['update'])) {
+                $stmt = $pdo->prepare("
+                    UPDATE employees SET employee_id = ?, first_name = ?, last_name = ?, email = ?, phone = ?, 
+                    position = ?, department_id = ?, salary = ?, hire_date = ?, address = ?, status = ?
+                    WHERE id = ?
+                ");
+                $stmt->execute([
+                    $_POST['employee_id'], $_POST['first_name'], $_POST['last_name'], 
+                    $_POST['email'], $_POST['phone'], $_POST['position'], 
+                    $_POST['department_id'] ?: null, $_POST['salary'] ?: null, $_POST['hire_date'] ?: null,
+                    $_POST['address'], $_POST['status'], $_POST['id']
+                ]);
+                $success = "Employee updated successfully!";
+            }
         }
         
         if (isset($_POST['delete'])) {
-            $stmt = $pdo->prepare("DELETE FROM employees WHERE id = ?");
+            // Check if employee has attendance records
+            $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM attendance WHERE employee_id = ?");
             $stmt->execute([$_POST['id']]);
-            $success = "Employee deleted successfully!";
+            $attendanceCount = $stmt->fetch()['count'];
+            
+            if ($attendanceCount > 0) {
+                // Don't delete, just deactivate
+                $stmt = $pdo->prepare("UPDATE employees SET status = 'terminated' WHERE id = ?");
+                $stmt->execute([$_POST['id']]);
+                $success = "Employee deactivated successfully (has attendance records)!";
+            } else {
+                $stmt = $pdo->prepare("DELETE FROM employees WHERE id = ?");
+                $stmt->execute([$_POST['id']]);
+                $success = "Employee deleted successfully!";
+            }
         }
     } catch(PDOException $e) {
         $error = "Error: " . $e->getMessage();
@@ -343,6 +407,28 @@ include 'includes/header.php';
 </div>
 
 <script>
+// Generate Employee ID
+document.getElementById('generate-emp-id').addEventListener('click', function() {
+    const currentYear = new Date().getFullYear();
+    const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    const employeeId = `EMP${currentYear}${randomNum}`;
+    document.getElementById('employee_id').value = employeeId;
+});
+
+// Format salary input with thousand separators
+document.getElementById('salary').addEventListener('input', function() {
+    let value = this.value.replace(/[^\d]/g, '');
+    if (value) {
+        this.value = parseInt(value).toLocaleString('id-ID');
+    }
+});
+
+// Remove formatting when form is submitted
+document.querySelector('form').addEventListener('submit', function() {
+    const salaryInput = document.getElementById('salary');
+    salaryInput.value = salaryInput.value.replace(/[^\d]/g, '');
+});
+
 function editEmployee(employee) {
     document.getElementById('modal-title').textContent = 'Edit Employee';
     document.getElementById('employee-id').value = employee.id;
@@ -375,6 +461,7 @@ function viewEmployee(employeeId) {
         .catch(error => {
             console.error('Error:', error);
             document.getElementById('employee-details').innerHTML = '<p class="text-danger">Error loading employee details.</p>';
+            new bootstrap.Modal(document.getElementById('viewEmployeeModal')).show();
         });
 }
 

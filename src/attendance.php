@@ -18,6 +18,28 @@ if ($_POST) {
             ]);
             $success = "Attendance marked successfully!";
         }
+        
+        if (isset($_POST['mark_all_present'])) {
+            $date = $_POST['date'];
+            // Get all active employees
+            $stmt = $pdo->prepare("SELECT id FROM employees WHERE status = 'active'");
+            $stmt->execute();
+            $allEmployees = $stmt->fetchAll();
+            
+            foreach ($allEmployees as $emp) {
+                // Check if attendance already exists
+                $stmt = $pdo->prepare("SELECT id FROM attendance WHERE employee_id = ? AND date = ?");
+                $stmt->execute([$emp['id'], $date]);
+                $exists = $stmt->fetch();
+                
+                if (!$exists) {
+                    // Insert new attendance record
+                    $stmt = $pdo->prepare("INSERT INTO attendance (employee_id, date, check_in, status) VALUES (?, ?, '09:00:00', 'present')");
+                    $stmt->execute([$emp['id'], $date]);
+                }
+            }
+            $success = "All employees marked as present!";
+        }
     } catch(PDOException $e) {
         $error = "Error: " . $e->getMessage();
     }
@@ -368,6 +390,54 @@ document.getElementById('date-picker').addEventListener('change', function() {
     window.location.href = '?date=' + this.value;
 });
 
+// Check-in/Check-out functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const checkinButtons = document.querySelectorAll('.btn-checkin');
+    
+    checkinButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const employeeId = this.getAttribute('data-employee-id');
+            const action = this.getAttribute('data-action');
+            const employeeName = this.closest('tr').querySelector('td:nth-child(1) strong').textContent;
+            
+            Swal.fire({
+                title: `${action === 'checkin' ? 'Check In' : 'Check Out'}`,
+                text: `${action === 'checkin' ? 'Check in' : 'Check out'} ${employeeName}?`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: `Yes, ${action === 'checkin' ? 'Check In' : 'Check Out'}`,
+                cancelButtonText: 'Cancel'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // Send AJAX request
+                    const formData = new FormData();
+                    formData.append('employee_id', employeeId);
+                    formData.append('action', action);
+                    
+                    fetch('api/attendance.php', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            Swal.fire('Success!', data.message, 'success').then(() => {
+                                location.reload();
+                            });
+                        } else {
+                            Swal.fire('Error!', data.message, 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        Swal.fire('Error!', 'An error occurred. Please try again.', 'error');
+                    });
+                }
+            });
+        });
+    });
+});
+
 function editAttendance(employeeId, employeeName, checkIn, checkOut, status, notes) {
     document.getElementById('modal-title').textContent = `Edit Attendance - ${employeeName}`;
     document.getElementById('employee_id').value = employeeId;
@@ -392,15 +462,32 @@ function markAllPresent() {
         cancelButtonText: 'Cancel'
     }).then((result) => {
         if (result.isConfirmed) {
-            // Implementation would go here
-            Swal.fire('Success!', 'All employees marked as present.', 'success');
+            const date = document.getElementById('date-picker').value;
+            const formData = new FormData();
+            formData.append('mark_all_present', '1');
+            formData.append('date', date);
+            
+            fetch('', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.text())
+            .then(() => {
+                Swal.fire('Success!', 'All employees marked as present.', 'success').then(() => {
+                    location.reload();
+                });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                Swal.fire('Error!', 'An error occurred. Please try again.', 'error');
+            });
         }
     });
 }
 
 function exportAttendance() {
     const date = document.getElementById('date-picker').value;
-    window.open(`export-attendance.php?date=${date}`, '_blank');
+    window.open(`reports.php?export=attendance&date=${date}`, '_blank');
 }
 
 // Reset modal when closed
